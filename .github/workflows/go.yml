@@ -1,28 +1,76 @@
-# This workflow will build a golang project
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
-
-name: Go
+name: Build and Release
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    tags:
+      - 'v*.*.*'
 
 jobs:
-
   build:
+    name: Build and Release
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v2
 
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: '1.22.2'
+        go-version: 1.22.2
 
     - name: Build
-      run: go build -ldflags "-s -w".
+      run: |
+        mkdir -p build
+        GOOS=${{ matrix.os == 'ubuntu-latest' && echo 'linux' || matrix.os == 'macos-latest' && echo 'darwin' || 'windows'}}
+        GOARCH=amd64
+        EXT=${{ matrix.os == 'windows-latest' && echo '.exe' || echo ''}}
+        go build -o build/myapp-${GOOS}-${GOARCH}${EXT} .
 
-    - name: Test
-      run: go build -ldflags "-s -w".
+    - name: Create Release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
+        draft: false
+        prerelease: false
+
+    - name: Upload Release Asset Linux
+      uses: actions/upload-release-asset@v1
+      if: matrix.os == 'ubuntu-latest'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./build/myapp-linux-amd64
+        asset_name: myapp-linux-amd64
+        asset_content_type: application/octet-stream
+
+    - name: Upload Release Asset macOS
+      uses: actions/upload-release-asset@v1
+      if: matrix.os == 'macos-latest'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./build/myapp-darwin-amd64
+        asset_name: myapp-darwin-amd64
+        asset_content_type: application/octet-stream
+
+    - name: Upload Release Asset Windows
+      uses: actions/upload-release-asset@v1
+      if: matrix.os == 'windows-latest'
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./build/myapp-windows-amd64.exe
+        asset_name: myapp-windows-amd64.exe
+        asset_content_type: application/octet-stream
